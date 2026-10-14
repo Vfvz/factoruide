@@ -14,8 +14,8 @@ local function Known()
     local out = {}
     -- Forever's talents are traits: whether it still has the tab API is not known yet (see Probe).
     if not (GetNumTalentTabs and GetNumTalents and GetTalentInfo) then return out end
-    for tab = 1, GetNumTalentTabs() do
-        for i = 1, GetNumTalents(tab) do
+    for tab = 1, GetNumTalentTabs() or 0 do
+        for i = 1, GetNumTalents(tab) or 0 do
             local name, _, tier, column, rank, maxRank = GetTalentInfo(tab, i)
             if name then
                 out[tab .. ":" .. tier .. ":" .. column] =

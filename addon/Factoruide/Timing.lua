@@ -15,7 +15,7 @@ FG.Timing = Timing
 local MAX_WINDOWS = (Constants and Constants.ChatFrameConstants and Constants.ChatFrameConstants.MaxChatWindows)
     or NUM_CHAT_WINDOWS
     or 10
-local muted = {}
+local muted, requests = {}, 0
 
 local function Unmute()
     for f in pairs(muted) do
@@ -24,17 +24,27 @@ local function Unmute()
     wipe(muted)
 end
 
+local function Mute(f)
+    if f:IsEventRegistered("TIME_PLAYED_MSG") then
+        f:UnregisterEvent("TIME_PLAYED_MSG")
+        muted[f] = true
+    end
+end
+
 local function Request()
     if not RequestTimePlayed then return end
     for i = 1, MAX_WINDOWS do
         local f = _G["ChatFrame" .. i]
-        if f and f:IsEventRegistered("TIME_PLAYED_MSG") then
-            f:UnregisterEvent("TIME_PLAYED_MSG")
-            muted[f] = true
-        end
+        -- A window the game would not let us change prints the answer; the request still goes.
+        if f then pcall(Mute, f) end
     end
-    -- Never leave the chat without it, even when no answer comes.
-    if C_Timer then C_Timer.After(10, Unmute) end
+    -- Never leave the chat without it, even when no answer comes (the latest request's delay).
+    requests = requests + 1
+    local mine = requests
+    local function Fallback()
+        if mine == requests then Unmute() end
+    end
+    if C_Timer then C_Timer.After(10, Fallback) end
     RequestTimePlayed()
 end
 

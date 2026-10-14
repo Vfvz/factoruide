@@ -5,6 +5,9 @@ Each version's tag message (`scripts/release.sh`), shown in the app's update pro
 ## Unreleased
 
 - Windows: the What's new page shows its titles and lists again (it showed the raw text).
+- Addon on WoW Forever: party members' progress, vendor supplies, the quest item button, gear upgrades and the character profile (spells, riding) updated for the game's current functions. The low health alert may stay silent there: the game can hide your health from addons; its own low health flash and Combat Audio Alerts remain.
+- Addon on WoW Forever and Classic Era: the play time the addon asks for (/played) is no longer printed in the chat at login, reload and level up.
+- Addon on WoW Classic and TBC: automatic training at the class trainer buys the leveling spells (it bought nothing).
 
 ## 0.8.0 (2026-10-14)
 

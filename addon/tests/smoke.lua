@@ -537,6 +537,21 @@ assert(
     macros[index].body:find("/targetexact Marshal McBride", 1, true),
     "macro follows the step: " .. macros[index].body
 )
+-- The character macro cap from Constants.MacroConsts (Forever): 18 of 30 leaves room, 30 does not.
+do
+    local numMacros, saved = GetNumMacros, macros[index]
+    Constants = { MacroConsts = { MAX_CHARACTER_MACROS = 30 } }
+    macros[index] = nil
+    GetNumMacros = function() return 0, 18 end
+    FG.TargetMacro:Pickup()
+    local made = GetMacroIndexByName("FG Cible")
+    assert(made > 0, "macro created with 18 character macros of 30")
+    macros[made] = nil
+    GetNumMacros = function() return 0, 30 end
+    FG.TargetMacro:Pickup()
+    assert(GetMacroIndexByName("FG Cible") == 0, "no macro past the cap")
+    macros[index], GetNumMacros, Constants = saved, numMacros, nil
+end
 print("target macro ok")
 
 -- Talent plan: the next talent follows the class plan (mage: Improved Frostbolt x5, then
@@ -562,6 +577,9 @@ do
     local getNumTalents = GetNumTalents
     GetNumTalents = nil
     assert(FG.Talents:Next() == nil, "no talent advice without GetNumTalents")
+    FG.Talents:Refresh()
+    GetNumTalents = function() return nil end
+    assert(FG.Talents:Next() == nil, "no talent advice when GetNumTalents gives nothing")
     FG.Talents:Refresh()
     GetNumTalents, UnitCharacterPoints, LearnTalent = getNumTalents, nil, nil
 end
@@ -615,7 +633,27 @@ do
     assert(asked == 2 and not chat.events.TIME_PLAYED_MSG, "muted again")
     runTimers()
     assert(chat.events.TIME_PLAYED_MSG, "chat listens again without an answer")
-    C_Timer.After, RequestTimePlayed, ChatFrame1 = nil, nil, nil
+    -- The delay of an unanswered request leaves the chat muted for a later one still waiting.
+    fire("PLAYER_LEVEL_UP")
+    runTimers()
+    local first = timers
+    timers = {}
+    fire("PLAYER_LEVEL_UP")
+    runTimers()
+    for _, f in ipairs(first) do
+        f()
+    end
+    assert(asked == 4 and not chat.events.TIME_PLAYED_MSG, "muted until the latest request's delay")
+    runTimers()
+    assert(chat.events.TIME_PLAYED_MSG, "chat listens again after the latest delay")
+    -- A window the game would not let us change does not stop the request.
+    ChatFrame2 = stub()
+    function ChatFrame2:IsEventRegistered() error("forbidden") end
+    fire("PLAYER_LEVEL_UP")
+    runTimers()
+    assert(asked == 5 and not chat.events.TIME_PLAYED_MSG, "asked despite a window refusing")
+    runTimers()
+    C_Timer.After, RequestTimePlayed, ChatFrame1, ChatFrame2 = nil, nil, nil, nil
 end
 print("timing ok")
 
@@ -736,7 +774,8 @@ do
     assert(bought[4540] == 16 and bought[159] == 20, "food and water bought")
     FG:Set("autoSupplies", nil)
     FG:Set("autoSellJunk", nil)
-    GetMoney, C_MerchantFrame = money, nil
+    GetMoney, C_MerchantFrame, C_Item.GetItemCount = money, nil, nil
+    GetMerchantNumItems, GetMerchantItemID, GetMerchantItemMaxStack, BuyMerchantItem = nil, nil, nil, nil
 end
 print("merchant ok")
 
@@ -1030,6 +1069,29 @@ assert(farmLine:find("2/3", 1, true), "a line of its own with the count: " .. fa
 assert(not stepLine:find("2/3", 1, true) and stepLine:find("Grind", 1, true), "the step's line apart: " .. stepLine)
 print("farm on the way ok")
 
+-- Training: the spells by name and rank, read through C_Spell (no GetSpellSubtext here, as on
+-- Forever).
+do
+    FG.Routes["train-test"] = {
+        race = 7,
+        class = 8,
+        faction = "Alliance",
+        fromLevel = 1,
+        toLevel = 60,
+        time = 1,
+        steps = { { k = "train", t = "Train", n = "Trainer", sp = { 116 }, lvl = 4 } },
+    }
+    C_Spell = {
+        GetSpellName = function(id) return id == 116 and "Frostbolt" or nil end,
+        GetSpellSubtext = function(id) return id == 116 and "Rank 2" or nil end,
+    }
+    useRoute("train-test")
+    local line = FG.Guide:Box().rows[1].text:GetText()
+    assert(line:find("Frostbolt (Rank 2)", 1, true), "spell with its rank: " .. line)
+    C_Spell = nil
+end
+print("training ok")
+
 -- Start over: asks when steps or quests were marked by hand, then undoes them.
 useRoute("skip-test")
 char.guide.skippedQuests[5004] = true
@@ -1117,6 +1179,15 @@ do
     C_Container.GetItemCooldown = function(id) return id == 5000 and 100 or 0, 30, 1 end
     fire("BAG_UPDATE_COOLDOWN")
     assert(swirl and swirl[1] == 100 and swirl[2] == 30, "cooldown shown")
+    -- During combat a protected swirl waits for the end of the fight.
+    swirl = nil
+    made.Cooldown.IsProtected = function() return true end
+    InCombatLockdown = function() return true end
+    fire("BAG_UPDATE_COOLDOWN")
+    assert(not swirl, "a protected cooldown set during combat")
+    InCombatLockdown = function() return false end
+    fire("PLAYER_REGEN_ENABLED")
+    assert(swirl and swirl[1] == 100, "cooldown shown after the fight")
     swirl = nil
     issecretvalue = function(v) return v == 100 end
     fire("BAG_UPDATE_COOLDOWN")

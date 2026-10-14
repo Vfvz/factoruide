@@ -132,7 +132,9 @@ verified.
   in tooltips and on quest rewards, the recommended talent under the guide. At the class trainer,
   only the spells that matter for leveling are bought.
 - Group and safety: party members' progress in the quest tracker, alerts on elite or high-level
-  targets and low health, elite objectives flagged in the guide.
+  targets and low health, elite objectives flagged in the guide. On WoW Forever the game may hide
+  your health from addons (in combat at least), so the low health alert can stay silent there; the
+  game's own low health flash (Options, Combat) and its Combat Audio Alerts (Accessibility) remain.
 - Profile: what the app needs to start a guide from your character (level, XP, quests done and in
   the log, position, hearthstone, flight paths seen on flight maps, professions, gear, spells),
   kept up to date every minute and at logout; `/fg profile` writes it to disk now (the interface

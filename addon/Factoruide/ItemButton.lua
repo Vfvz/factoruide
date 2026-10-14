@@ -80,12 +80,11 @@ function ItemButton:SetSteps(steps)
     if self.link then Apply(nil) end
 end
 
-FG:On("PLAYER_REGEN_ENABLED", function()
-    local p = ItemButton.pending
-    if p then Apply(p.link or nil, p.texture) end
-end)
-
-FG:On("BAG_UPDATE_COOLDOWN", function()
+-- Cooldown:SetCooldown is a protected function on Forever, like Show and Hide: during combat a
+-- protected swirl waits for the end of the fight. Not measured in game: `/fg debug` says which it
+-- was the first time, and the ADDON_ACTION_BLOCKED report names a call the game refused.
+local probed = false
+local function UpdateCooldown()
     -- Forever has only the C_ forms; older clients may have only the global.
     local cooldownOf = (C_Container and C_Container.GetItemCooldown)
         or (C_Item and C_Item.GetItemCooldown)
@@ -94,6 +93,19 @@ FG:On("BAG_UPDATE_COOLDOWN", function()
         local id = tonumber(ItemButton.link:match("item:(%d+)"))
         local start, duration = cooldownOf(id)
         start, duration = FG.Readable(start), FG.Readable(duration)
-        if start and duration then button.cooldown:SetCooldown(start, duration) end
+        local now = FG.CanLayout(button.cooldown)
+        if InCombatLockdown() and not probed then
+            probed = true
+            FG:Debug("quest item cooldown in combat: %s", now and "set now" or "protected, set after the fight")
+        end
+        if start and duration and now then button.cooldown:SetCooldown(start, duration) end
     end
+end
+
+FG:On("PLAYER_REGEN_ENABLED", function()
+    local p = ItemButton.pending
+    if p then Apply(p.link or nil, p.texture) end
+    UpdateCooldown()
 end)
+
+FG:On("BAG_UPDATE_COOLDOWN", UpdateCooldown)
