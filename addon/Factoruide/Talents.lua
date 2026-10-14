@@ -12,7 +12,9 @@ FG.Talents = Talents
 --- Talents of the character: "tab:tier:column" -> { tab, index, name, rank, maxRank }.
 local function Known()
     local out = {}
-    for tab = 1, (GetNumTalentTabs and GetNumTalentTabs() or 0) do
+    -- Forever's talents are traits: whether it still has the tab API is not known yet (see Probe).
+    if not (GetNumTalentTabs and GetNumTalents and GetTalentInfo) then return out end
+    for tab = 1, GetNumTalentTabs() do
         for i = 1, GetNumTalents(tab) do
             local name, _, tier, column, rank, maxRank = GetTalentInfo(tab, i)
             if name then
@@ -61,7 +63,7 @@ end
 
 function Talents:LearnNext()
     local t = self:Next()
-    if t and Unspent() > 0 and not InCombatLockdown() then
+    if t and LearnTalent and Unspent() > 0 and not InCombatLockdown() then
         LearnTalent(t.tab, t.index)
         FG:Print(fr and "talent appris : %s (%d/%d)" or "talent learned: %s (%d/%d)", t.name, t.rank + 1, t.maxRank)
         return true
@@ -69,7 +71,25 @@ function Talents:LearnNext()
     return false
 end
 
+-- `/fg debug`: which of the talent functions this client has, once per session.
+local probed = false
+local function Probe()
+    if probed then return end
+    probed = true
+    local missing = {}
+    for _, name in ipairs({ "GetNumTalentTabs", "GetNumTalents", "GetTalentInfo", "LearnTalent", "UnitCharacterPoints" }) do
+        if not _G[name] then table.insert(missing, name) end
+    end
+    FG:Debug(
+        "talents: %d tabs, %d unspent, missing: %s",
+        GetNumTalentTabs and GetNumTalentTabs() or 0,
+        Unspent(),
+        #missing > 0 and table.concat(missing, ", ") or "none"
+    )
+end
+
 function Talents:Refresh()
+    Probe()
     if not FG:Get("talentAdvisor") then
         if frame then frame:Hide() end
         return

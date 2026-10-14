@@ -356,7 +356,8 @@ local function StepLine(step, withProgress, index)
         for _, id in ipairs(step.sp) do
             local name = FG.SpellName(id)
             if not name then break end
-            local rank = GetSpellSubtext and GetSpellSubtext(id)
+            local subtextOf = C_Spell and C_Spell.GetSpellSubtext or GetSpellSubtext
+            local rank = subtextOf and subtextOf(id)
             names[#names + 1] = (rank and rank ~= "") and (name .. " (" .. rank .. ")") or name
         end
         text = #names == #step.sp and ((step.n or "") .. ": " .. table.concat(names, ", ")) or step.t

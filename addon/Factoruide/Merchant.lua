@@ -22,7 +22,24 @@ local NO_MANA = { WARRIOR = true, ROGUE = true }
 --- Share of the character's money the automatic purchases may spend.
 local BUDGET = 0.3
 
-local function Money(copper) return GetCoinTextureString and GetCoinTextureString(copper) or tostring(copper) end
+-- Forever has only the C_ forms of these; Classic and TBC may have only the older globals.
+local function Money(copper)
+    local coins = C_CurrencyInfo and C_CurrencyInfo.GetCoinTextureString or GetCoinTextureString
+    return coins and coins(copper) or tostring(copper)
+end
+
+--- Price and units per purchase of a merchant item (nil when the game gives nothing for it).
+local function MerchantPrice(index)
+    if C_MerchantFrame and C_MerchantFrame.GetItemInfo then
+        local info = C_MerchantFrame.GetItemInfo(index)
+        if not info then return nil end
+        return info.price, info.stackCount
+    end
+    local _, _, price, quantity = GetMerchantItemInfo(index)
+    return price, quantity
+end
+
+local function ItemCount(itemID) return (C_Item and C_Item.GetItemCount or GetItemCount)(itemID) or 0 end
 
 local function SellJunk()
     if not C_Container then return end
@@ -63,9 +80,16 @@ local function BestOffer(families)
         for _, entry in ipairs(family) do
             local need, id = entry[1], entry[2]
             if need <= level and sold[id] and (not best or need > best.level) then
-                local _, _, price, quantity = GetMerchantItemInfo(sold[id])
-                best =
-                    { index = sold[id], id = id, level = need, unit = price / math.max(1, quantity or 1), ids = family }
+                local price, quantity = MerchantPrice(sold[id])
+                if price then
+                    best = {
+                        index = sold[id],
+                        id = id,
+                        level = need,
+                        unit = price / math.max(1, quantity or 1),
+                        ids = family,
+                    }
+                end
             end
         end
     end
@@ -79,7 +103,7 @@ local function Stock(families, want, budget)
     if not offer or want <= 0 then return 0 end
     local have = 0
     for _, entry in ipairs(offer.ids) do
-        if entry[1] >= offer.level - 10 then have = have + GetItemCount(entry[2]) end
+        if entry[1] >= offer.level - 10 then have = have + ItemCount(entry[2]) end
     end
     local missing = math.min(want - have, math.floor(budget / math.max(1, offer.unit)))
     local stack = GetMerchantItemMaxStack(offer.index)

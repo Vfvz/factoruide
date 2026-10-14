@@ -68,7 +68,7 @@ end
 function ItemButton:SetSteps(steps)
     if not FG:Get("questItemButton") or not GetQuestLogSpecialItemInfo then return end
     for _, step in ipairs(steps) do
-        local index = step.q and GetQuestLogIndexByID and GetQuestLogIndexByID(step.q)
+        local index = step.q and FG.QuestLog.GetLogIndexForQuestID(step.q) or nil
         if index and index > 0 then
             local link, texture = GetQuestLogSpecialItemInfo(index)
             if link then
@@ -86,9 +86,14 @@ FG:On("PLAYER_REGEN_ENABLED", function()
 end)
 
 FG:On("BAG_UPDATE_COOLDOWN", function()
-    if button and button:IsShown() and ItemButton.link and GetItemCooldown then
+    -- Forever has only the C_ forms; older clients may have only the global.
+    local cooldownOf = (C_Container and C_Container.GetItemCooldown)
+        or (C_Item and C_Item.GetItemCooldown)
+        or GetItemCooldown
+    if button and button:IsShown() and ItemButton.link and cooldownOf then
         local id = tonumber(ItemButton.link:match("item:(%d+)"))
-        local start, duration = GetItemCooldown(id)
-        if start then button.cooldown:SetCooldown(start, duration) end
+        local start, duration = cooldownOf(id)
+        start, duration = FG.Readable(start), FG.Readable(duration)
+        if start and duration then button.cooldown:SetCooldown(start, duration) end
     end
 end)

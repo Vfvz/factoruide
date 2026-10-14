@@ -22,7 +22,7 @@ FG:On("PLAYER_TARGET_CHANGED", function()
     if UnitIsPlayer("target") then return end
     local level, mine = UnitLevel("target"), UnitLevel("player")
     local kind = UnitClassification("target")
-    local name = UnitName("target") or ""
+    local name = FG.Readable(UnitName("target")) or ""
     if level == -1 or kind == "worldboss" then
         Warn(string.format(fr and "DANGER : %s (niveau ??)" or "DANGER: %s (level ??)", name))
     elseif kind == "elite" or kind == "rareelite" then
@@ -32,10 +32,20 @@ FG:On("PLAYER_TARGET_CHANGED", function()
     end
 end)
 
-local warned = false
+local warned, secretSeen = false, false
 FG:On("UNIT_HEALTH", function(unit)
     if unit ~= "player" or not FG:Get("safetyAlerts") then return end
-    local share = UnitHealth("player") / math.max(1, UnitHealthMax("player"))
+    -- Forever may keep the health secret (in combat at least): no alert then, the game's own low
+    -- health flash remains.
+    local hp, hpMax = FG.Readable(UnitHealth("player")), FG.Readable(UnitHealthMax("player"))
+    if not hp or not hpMax then
+        if not secretSeen then
+            secretSeen = true
+            FG:Debug("low health alert: the player's health is secret here")
+        end
+        return
+    end
+    local share = hp / math.max(1, hpMax)
     if share < 0.35 and not warned and not UnitIsDeadOrGhost("player") then
         warned = true
         Warn(string.format(fr and "Vie basse : %d %%" or "Low health: %d%%", math.floor(share * 100)))

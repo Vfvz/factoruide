@@ -13,8 +13,9 @@ if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then C_ChatInfo.Register
 --- "id:f1,f2;id:f1" for the quests of the log.
 local function Encode()
     local parts = {}
-    for i = 1, (GetNumQuestLogEntries and GetNumQuestLogEntries() or 0) do
-        local _, _, _, isHeader, _, _, _, questID = GetQuestLogTitle(i)
+    for i = 1, QuestLog.GetNumQuestLogEntries() do
+        local info = QuestLog.GetInfo(i)
+        local isHeader, questID = info and info.isHeader, info and info.questID
         if not isHeader and questID and questID > 0 then
             local counts = {}
             for _, o in ipairs(QuestLog.GetQuestObjectives(questID) or {}) do

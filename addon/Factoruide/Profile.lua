@@ -74,6 +74,22 @@ end
 --- Spells of the spell book (every rank the character learned).
 local function Spells()
     local out = {}
+    -- Forever reads the spell book through C_SpellBook (skill lines); Classic and TBC through tabs.
+    if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines and Enum and Enum.SpellBookSpellBank then
+        local bank, spell = Enum.SpellBookSpellBank.Player, Enum.SpellBookItemType.Spell
+        for line = 1, C_SpellBook.GetNumSpellBookSkillLines() do
+            local info = C_SpellBook.GetSpellBookSkillLineInfo(line)
+            if info and not info.offSpecID then
+                for slot = info.itemIndexOffset + 1, info.itemIndexOffset + info.numSpellBookItems do
+                    -- The base spell (the rank learned), not what may override it for a while.
+                    local kind, actionID, spellID = C_SpellBook.GetSpellBookItemType(slot, bank)
+                    local id = actionID or spellID
+                    if kind == spell and id then table.insert(out, id) end
+                end
+            end
+        end
+        return out
+    end
     if not (GetNumSpellTabs and GetSpellTabInfo and GetSpellBookItemInfo) then return out end
     for tab = 1, GetNumSpellTabs() do
         local _, _, offset, count = GetSpellTabInfo(tab)

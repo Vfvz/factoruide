@@ -9,21 +9,33 @@ local fr = GetLocale() == "frFR"
 local Timing = { played = nil, at = nil }
 FG.Timing = Timing
 
-local requested = false
+-- Asking /played prints it in the chat: the chat windows stop listening to the answer of our own
+-- requests until it has come (they print it themselves, without going through a global function
+-- an addon could replace).
+local MAX_WINDOWS = (Constants and Constants.ChatFrameConstants and Constants.ChatFrameConstants.MaxChatWindows)
+    or NUM_CHAT_WINDOWS
+    or 10
+local muted = {}
 
--- Asking /played prints it in the chat: hide our own requests.
-if ChatFrame_DisplayTimePlayed then
-    local display = ChatFrame_DisplayTimePlayed
-    ChatFrame_DisplayTimePlayed = function(...)
-        if not requested then display(...) end
+local function Unmute()
+    for f in pairs(muted) do
+        f:RegisterEvent("TIME_PLAYED_MSG")
     end
+    wipe(muted)
 end
 
 local function Request()
-    if RequestTimePlayed then
-        requested = true
-        RequestTimePlayed()
+    if not RequestTimePlayed then return end
+    for i = 1, MAX_WINDOWS do
+        local f = _G["ChatFrame" .. i]
+        if f and f:IsEventRegistered("TIME_PLAYED_MSG") then
+            f:UnregisterEvent("TIME_PLAYED_MSG")
+            muted[f] = true
+        end
     end
+    -- Never leave the chat without it, even when no answer comes.
+    if C_Timer then C_Timer.After(10, Unmute) end
+    RequestTimePlayed()
 end
 
 local function Times()
@@ -34,7 +46,14 @@ local function Times()
 end
 
 FG:On("TIME_PLAYED_MSG", function(total, thisLevel)
-    requested = false
+    -- The chat windows listen again once this event is over (not while it is being delivered).
+    if next(muted) then
+        if C_Timer then
+            C_Timer.After(0, Unmute)
+        else
+            Unmute()
+        end
+    end
     Timing.played, Timing.at = total, GetTime()
     local times = Times()
     if times then times[UnitLevel("player")] = times[UnitLevel("player")] or (total - thisLevel) end

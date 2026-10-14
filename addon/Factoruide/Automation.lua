@@ -135,7 +135,9 @@ local function BuyNext()
     if not training then return end
     local useful = Useful()
     for i = 1, GetNumTrainerServices() do
-        local name, serviceType = GetTrainerServiceInfo(i)
+        -- Forever: name, type, ...; Classic and TBC: name, rank, type, ...
+        local name, a, b = GetTrainerServiceInfo(i)
+        local serviceType = (FG.Edition == "forever") and a or b
         if serviceType == "available" and GetTrainerServiceCost(i) <= GetMoney() and (not useful or useful[name]) then
             BuyTrainerService(i)
             C_Timer.After(0.4, BuyNext)

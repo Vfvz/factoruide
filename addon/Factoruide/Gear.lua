@@ -87,7 +87,9 @@ local function Class() return select(2, UnitClass("player")) end
 --- Score of an item for the character (nil: unknown yet or not for it).
 function Gear:Score(link)
     local weights = WEIGHTS[Class()]
-    local stats = link and weights and GetItemStats and GetItemStats(link)
+    -- Forever has only C_Item's; Classic and TBC may have only the global.
+    local statsOf = C_Item and C_Item.GetItemStats or GetItemStats
+    local stats = link and weights and statsOf and statsOf(link)
     if not stats then return nil end
     local score = 0
     for key, w in pairs(weights) do

@@ -199,6 +199,11 @@ function FG.ProfessionSkill(line)
             if skillLine == line then return rank, maxRank, name end
         end
     end
+    -- Forever reads skill lines (riding among them) by ID; Classic's C_SkillInfo lacks this.
+    if C_SkillInfo and C_SkillInfo.GetSkillLineInfoByID then
+        local s = C_SkillInfo.GetSkillLineInfoByID(line)
+        if s and s.rank and s.rank > 0 then return s.rank, s.maxRank, s.name end
+    end
     if GetNumSkillLines and GetSkillLineInfo then
         local names = SKILL_NAMES[line] or {}
         for i = 1, GetNumSkillLines() do

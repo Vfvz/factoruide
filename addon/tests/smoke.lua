@@ -551,6 +551,20 @@ end
 assert(FG.Talents:Next().name == "Improved Frostbolt", "next talent: Improved Frostbolt")
 frostbolt = 5
 assert(FG.Talents:Next().name == "Elemental Precision", "next talent after 5/5: Elemental Precision")
+-- A client missing some of the classic talent functions (Forever's talents are traits): nothing
+-- learned nor advised, no error.
+do
+    local learned
+    UnitCharacterPoints = function() return 1 end
+    assert(not FG.Talents:LearnNext(), "nothing learned without LearnTalent")
+    LearnTalent = function(tab, i) learned = { tab, i } end
+    assert(FG.Talents:LearnNext() and learned[1] == 3 and learned[2] == 2, "learned through LearnTalent")
+    local getNumTalents = GetNumTalents
+    GetNumTalents = nil
+    assert(FG.Talents:Next() == nil, "no talent advice without GetNumTalents")
+    FG.Talents:Refresh()
+    GetNumTalents, UnitCharacterPoints, LearnTalent = getNumTalents, nil, nil
+end
 print("talents ok")
 
 -- Leveling time against the plan.
@@ -570,6 +584,39 @@ FG.Routes["timing-test"] = {
 useRoute("timing-test")
 FG.Guide:State().levelTimes = { [3] = 240 }
 assert(FG.Timing:Short():find("1 min", 1, true), "timing ahead of plan: " .. FG.Timing:Short())
+-- The /played the addon asks for is not printed: the chat windows stop listening to its answer,
+-- and listen again once it has come (or after a while without one).
+do
+    local timers, asked = {}, 0
+    local function runTimers()
+        local due = timers
+        timers = {}
+        for _, f in ipairs(due) do
+            f()
+        end
+    end
+    C_Timer.After = function(_, f) table.insert(timers, f) end
+    RequestTimePlayed = function() asked = asked + 1 end
+    local chat = stub()
+    chat.events.TIME_PLAYED_MSG = true
+    function chat:IsEventRegistered(e) return self.events[e] or false end
+    function chat:UnregisterEvent(e) self.events[e] = nil end
+    ChatFrame1 = chat
+    fire("PLAYER_LEVEL_UP")
+    runTimers()
+    assert(asked == 1 and not chat.events.TIME_PLAYED_MSG, "chat muted while asking")
+    timers = {} -- the answer comes before the fallback
+    fire("TIME_PLAYED_MSG", 3600, 600)
+    assert(not chat.events.TIME_PLAYED_MSG, "not during the answer")
+    runTimers()
+    assert(chat.events.TIME_PLAYED_MSG, "chat listens again after the answer")
+    fire("PLAYER_LEVEL_UP")
+    runTimers()
+    assert(asked == 2 and not chat.events.TIME_PLAYED_MSG, "muted again")
+    runTimers()
+    assert(chat.events.TIME_PLAYED_MSG, "chat listens again without an answer")
+    C_Timer.After, RequestTimePlayed, ChatFrame1 = nil, nil, nil
+end
 print("timing ok")
 
 -- Flight master: the current fly step's destination is taken.
@@ -632,6 +679,27 @@ for _, f in ipairs(frames) do
     end
 end
 assert(FG.Party:Suffix(7101, 1, 8):find("Pata 3", 1, true), "party progress shown: " .. FG.Party:Suffix(7101, 1, 8))
+-- Sending: the quests of the log go after the reset, read through C_QuestLog (no older globals
+-- here, as on Forever). A fresh copy of the module, with its own events.
+do
+    local handlers, sent = {}, {}
+    local mini = {
+        QuestLog = FG.QuestLog,
+        On = function(_, event, fn) handlers[event] = fn end,
+        Get = function() return true end,
+    }
+    assert(loadfile("addon/Factoruide/Party.lua"))("Factoruide", mini)
+    local entries, info = C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo
+    C_QuestLog.GetNumQuestLogEntries = function() return 2 end
+    C_QuestLog.GetInfo = function(i) return i == 1 and { isHeader = true, questID = 0 } or { questID = 7101 } end
+    IsInGroup, IsInRaid = function() return true end, function() return false end
+    C_ChatInfo = { SendAddonMessage = function(_, message) table.insert(sent, message) end }
+    C_Timer.After = function(_, f) f() end
+    handlers.QUEST_LOG_UPDATE()
+    assert(sent[1] == "R" and sent[2] and sent[2]:find("^7101:"), "progress sent: " .. table.concat(sent, " | "))
+    C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo = entries, info
+    IsInGroup, IsInRaid, C_ChatInfo, C_Timer.After = nil, nil, nil, nil
+end
 print("party ok")
 
 -- Merchant: grey items are sold.
@@ -650,6 +718,26 @@ for _, f in ipairs(frames) do
     if f.events.MERCHANT_SHOW and f.OnEvent then f:OnEvent("MERCHANT_SHOW") end
 end
 assert(sold == 1, "one grey item sold, got " .. sold)
+-- Supplies, read through C_MerchantFrame and C_Item (no older globals here, as on Forever): the
+-- food and water of the character's level, minus what the bags hold.
+do
+    local bought, money = {}, GetMoney
+    local offers = { 4540, 159 } -- bread and water of level 1
+    GetMoney = function() return 10000 end
+    GetMerchantNumItems = function() return #offers end
+    GetMerchantItemID = function(i) return offers[i] end
+    GetMerchantItemMaxStack = function() return 20 end
+    BuyMerchantItem = function(i, n) bought[offers[i]] = n end
+    C_MerchantFrame = { GetItemInfo = function() return { price = 5, stackCount = 1 } end }
+    C_Item.GetItemCount = function(id) return id == 4540 and 4 or 0 end
+    FG:Set("autoSellJunk", false)
+    FG:Set("autoSupplies", true)
+    fire("MERCHANT_SHOW")
+    assert(bought[4540] == 16 and bought[159] == 20, "food and water bought")
+    FG:Set("autoSupplies", nil)
+    FG:Set("autoSellJunk", nil)
+    GetMoney, C_MerchantFrame = money, nil
+end
 print("merchant ok")
 
 -- Skins: a skin registered through the public API styles every frame made so far.
@@ -1010,6 +1098,122 @@ InCombatLockdown = function() return false end
 fire("PLAYER_REGEN_ENABLED")
 assert(resized, "resized after the fight")
 print("combat layout ok")
+
+-- Quest item button: the quest's log index through C_QuestLog (no GetQuestLogIndexByID here, as
+-- on Forever), its cooldown through C_Container, a secret cooldown left alone.
+do
+    local made, swirl = {}, nil
+    local createFrame, specialItem, logIndex = CreateFrame, GetQuestLogSpecialItemInfo, C_QuestLog.GetLogIndexForQuestID
+    CreateFrame = function(kind, ...)
+        local f = createFrame(kind, ...)
+        made[kind] = f
+        return f
+    end
+    C_QuestLog.GetLogIndexForQuestID = function(q) return q == 7101 and 4 or nil end
+    GetQuestLogSpecialItemInfo = function(i) return i == 4 and "|Hitem:5000:0|h[Item]|h" or nil, 132761 end
+    FG.ItemButton:SetSteps({ { k = "objective", q = 7101 } })
+    assert(FG.ItemButton.link and made.Cooldown, "quest item button shown")
+    made.Cooldown.SetCooldown = function(_, start, duration) swirl = { start, duration } end
+    C_Container.GetItemCooldown = function(id) return id == 5000 and 100 or 0, 30, 1 end
+    fire("BAG_UPDATE_COOLDOWN")
+    assert(swirl and swirl[1] == 100 and swirl[2] == 30, "cooldown shown")
+    swirl = nil
+    issecretvalue = function(v) return v == 100 end
+    fire("BAG_UPDATE_COOLDOWN")
+    assert(not swirl, "a secret cooldown is not shown")
+    issecretvalue = function() return false end
+    CreateFrame, GetQuestLogSpecialItemInfo, C_QuestLog.GetLogIndexForQuestID = createFrame, specialItem, logIndex
+    C_Container.GetItemCooldown = nil
+    FG.ItemButton:SetSteps({})
+    assert(not FG.ItemButton.link, "button hidden")
+end
+print("quest item button ok")
+
+-- Low health alert: from readable health only (Forever may keep it secret), without error.
+do
+    local warnings, logged, health = {}, {}, 20
+    local secret = {}
+    local debugFn = FG.Debug
+    FG.Debug = function(_, fmt, ...) table.insert(logged, fmt:format(...)) end
+    UIErrorsFrame = { AddMessage = function(_, text) table.insert(warnings, text) end }
+    UnitHealth, UnitHealthMax = function() return health end, function() return 100 end
+    UnitIsDeadOrGhost = function() return false end
+    fire("UNIT_HEALTH", "player")
+    assert(#warnings == 1 and warnings[1]:find("20", 1, true), "low health alert")
+    health = 90
+    fire("UNIT_HEALTH", "player")
+    health = secret
+    issecretvalue = function(v) return v == secret end
+    fire("UNIT_HEALTH", "player")
+    assert(#warnings == 1, "no alert from a secret health")
+    for _, line in ipairs(logged) do
+        assert(not line:find("error in", 1, true), line)
+    end
+    issecretvalue = function() return false end
+    FG.Debug, UIErrorsFrame, UnitHealth, UnitHealthMax, UnitIsDeadOrGhost = debugFn, nil, nil, nil, nil
+end
+print("safety ok")
+
+-- Class trainer: the service type is the second value on Forever, the third on Classic and TBC.
+do
+    local services, bought, timers = {}, {}, {}
+    C_Timer.After = function(_, f) table.insert(timers, f) end
+    GetNumTrainerServices = function() return #services end
+    GetTrainerServiceInfo = function(i) return unpack(services[i]) end
+    GetTrainerServiceCost = function() return 0 end
+    BuyTrainerService = function(i) table.insert(bought, table.remove(services, i)[1]) end
+    FG:Set("trainUseful", false)
+    local function train()
+        fire("TRAINER_SHOW")
+        while #timers > 0 do
+            table.remove(timers, 1)()
+        end
+        fire("TRAINER_CLOSED")
+    end
+    services = { { "Frostbolt", "available", 135846 } }
+    train()
+    assert(bought[1] == "Frostbolt", "Forever: available service bought")
+    FG.Edition = "classic"
+    services = { { "Fireball", "Rank 2", "available" }, { "Arcane Intellect", "Rank 1", "used" } }
+    train()
+    assert(bought[2] == "Fireball" and #bought == 2, "Classic: available service bought, used one left")
+    FG.Edition = "forever"
+    FG:Set("trainUseful", nil)
+    GetNumTrainerServices = function() return 0 end
+    C_Timer.After = nil
+end
+print("trainer ok")
+
+-- Forever's spell book (C_SpellBook skill lines, not the other specialization's) and skill lines
+-- by ID (riding), for the profile; gear stats through C_Item.
+do
+    Enum.SpellBookSpellBank = { Player = 0, Pet = 1 }
+    Enum.SpellBookItemType = { None = 0, Spell = 1, FutureSpell = 2 }
+    C_SpellBook = {
+        GetNumSpellBookSkillLines = function() return 2 end,
+        GetSpellBookSkillLineInfo = function(line)
+            if line == 1 then return { itemIndexOffset = 0, numSpellBookItems = 2 } end
+            return { itemIndexOffset = 2, numSpellBookItems = 1, offSpecID = 63 }
+        end,
+        GetSpellBookItemType = function(slot)
+            if slot == 1 then return 1, 143, 143 end
+            if slot == 2 then return 2, 116, 116 end
+            return 1, 2136, 2136
+        end,
+    }
+    C_SkillInfo = {
+        GetSkillLineInfoByID = function(id) return id == 762 and { rank = 75, maxRank = 150, name = "Riding" } or nil end,
+    }
+    FG.Profile:Snapshot()
+    local profile = FactoruideDB.profiles["Brouz-Realm"]
+    assert(#profile.spells == 1 and profile.spells[1] == 143, "spells learned, from C_SpellBook")
+    assert(profile.riding == 75, "riding from C_SkillInfo, got " .. tostring(profile.riding))
+    C_SpellBook, C_SkillInfo = nil, nil
+    C_Item.GetItemStats = function() return { ITEM_MOD_INTELLECT_SHORT = 4 } end
+    assert(FG.Gear:Score("item:5000") == 4, "gear scored from C_Item")
+    C_Item.GetItemStats = nil
+end
+print("forever spell book ok")
 
 -- Classic Era (1.15) has no C_QuestLog log functions: the quest log is read through the older
 -- globals, and the guide still draws.

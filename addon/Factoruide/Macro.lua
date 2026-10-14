@@ -40,7 +40,10 @@ local function Write(body, create)
     if index == 0 then
         if not create then return nil end
         local _, characterCount = GetNumMacros()
-        if characterCount >= (MAX_CHARACTER_MACROS or 18) then
+        local max = (Constants and Constants.MacroConsts and Constants.MacroConsts.MAX_CHARACTER_MACROS)
+            or MAX_CHARACTER_MACROS
+            or 30
+        if characterCount >= max then
             FG:Print(
                 fr and "plus de place pour une macro de personnage (%s)" or "no room for a character macro (%s)",
                 NAME
